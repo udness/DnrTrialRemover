@@ -43,16 +43,14 @@ namespace DnrTrialRemover {
 
         static int RemoveTrialCalls(MethodDef cctor) {
             int count = 0;
-            if(cctor != null) {
-                if(cctor.HasBody) {
-                    var firstCall = cctor.Body.Instructions.First(x => x.OpCode == OpCodes.Call);
-                    if(firstCall.Operand is MethodDef method) {
-                        if(method.HasBody) {
-                            var firstString = method.Body.Instructions.First(x => x.OpCode == OpCodes.Ldstr).Operand.ToString();
-                            if(firstString == "This assembly is protected by an unregistered version of Eziriz's \".NET Reactor\"! This assembly won't further work.") {
-                                count++;
-                                firstCall.OpCode = OpCodes.Nop;
-                            }
+            if(cctor.HasBody) {
+                var firstCall = cctor.Body.Instructions.First(x => x.OpCode == OpCodes.Call);
+                if(firstCall.Operand is MethodDef method) {
+                    if(method.HasBody) {
+                        var firstString = method.Body.Instructions.First(x => x.OpCode == OpCodes.Ldstr).Operand.ToString();
+                        if(firstString == "This assembly is protected by an unregistered version of Eziriz's \".NET Reactor\"! This assembly won't further work.") {
+                            count++;
+                            firstCall.OpCode = OpCodes.Nop;
                         }
                     }
                 }
