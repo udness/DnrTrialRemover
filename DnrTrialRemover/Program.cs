@@ -17,45 +17,61 @@ namespace DnrTrialRemover {
                 Environment.Exit(-1);
             }
             var module = ModuleDefMD.Load(args[0]);
-            int count = 0;
             string output = args[0].Replace(Path.GetExtension(args[0]), "_removed" + Path.GetExtension(args[0]));
-            foreach(var type in module.Types)
-                count += RemoveTrial(type);
-            Console.WriteLine("Cleaned {0} Trial Calls.", count);
-            if(!module.IsILOnly) module.NativeWrite(output);
-            else module.Write(output);
+            RemoveTrial(module);
+            module.Write(output, new dnlib.DotNet.Writer.ModuleWriterOptions(module) {
+                Logger = DummyLogger.NoThrowInstance
+            });
             Console.WriteLine("File saved in  : " + output);
             Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
         }
 
-        static int RemoveTrial(TypeDef type) {
-            int count = 0;
-            foreach(var constructor in type.FindConstructors())
-                count += RemoveTrialCalls(constructor);
-            if(type.HasNestedTypes) {
-                foreach(var nestedType in type.NestedTypes) {
-                    foreach(var cons in nestedType.FindConstructors()) count += RemoveTrialCalls(cons);
+        static void RemoveTrial(ModuleDefMD Module) {
+            List<MethodDef> trialMethods = new List<MethodDef>();
+            int countTrialCall = 0;
+            foreach(var type in Module.Types) {
+                foreach(var method in type.Methods.Where(x => x.HasBody)) {
+                    var firstStr = method.Body.Instructions.FirstOrDefault(x => x.OpCode == OpCodes.Ldstr);
+                    if(firstStr != null) {
+                        if(firstStr.Operand.ToString() == "This assembly is protected by an unregistered version of Eziriz's \".NET Reactor\"! This assembly won't further work.")
+                            trialMethods.Add(method);
+                    }
                 }
+                    
             }
-            return count;
-        }
 
-        static int RemoveTrialCalls(MethodDef cctor) {
-            int count = 0;
-            if(cctor.HasBody) {
-                var firstCall = cctor.Body.Instructions.First(x => x.OpCode == OpCodes.Call);
-                if(firstCall.Operand is MethodDef method) {
-                    if(method.HasBody) {
-                        var firstString = method.Body.Instructions.First(x => x.OpCode == OpCodes.Ldstr).Operand.ToString();
-                        if(firstString == "This assembly is protected by an unregistered version of Eziriz's \".NET Reactor\"! This assembly won't further work.") {
-                            count++;
-                            firstCall.OpCode = OpCodes.Nop;
+            Console.WriteLine($"Found {trialMethods.Count} trial declarations");
+
+            foreach(var type in Module.Types) {
+                foreach(var method in type.Methods.Where(x => x.HasBody)) {
+                    var instrs = method.Body.Instructions;
+                    for(int i = 0; i < instrs.Count; i++) {
+                        var instr = instrs[i];
+                        if(instr.OpCode != OpCodes.Call)
+                            continue;
+                        if(instr.Operand is MethodDef callMethod) {
+                            if(trialMethods.Contains(callMethod)) {
+                                instr.OpCode = OpCodes.Nop;
+                                countTrialCall++;
+                            }
                         }
+                        
                     }
                 }
             }
-            return count;
+
+            foreach(var trial in trialMethods) {
+                if(trial.DeclaringType != Module.GlobalType) {
+                    
+                    Module.Types.Remove(trial.DeclaringType);
+                    continue;
+                }
+                Module.GlobalType.Methods.Remove(trial);
+                
+            }
+            Console.WriteLine($"{countTrialCall} calls to trial check removed");
+
         }
     }
 }
