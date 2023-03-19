@@ -18,7 +18,19 @@ namespace DnrTrialRemover {
             }
             var module = ModuleDefMD.Load(args[0]);
             string output = args[0].Replace(Path.GetExtension(args[0]), "_removed" + Path.GetExtension(args[0]));
-            RemoveTrial(module);
+            Console.Write("Choose Mode\n1 = Removes calls to trial and removes trial types\n2 = Only patches the trial methods\nOption: ");
+            int option = int.Parse(Console.ReadLine());
+            switch(option) {
+                case 1: RemoveTrial(module); break;
+                case 2:
+                    var trialMethods = GetTrialMethods(module); 
+                    foreach(var trialMethod in trialMethods) {
+                        trialMethod.Body.Instructions.Clear();
+                        trialMethod.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+                    }
+                    Console.WriteLine("Patched {0} trial methods", trialMethods.Count);
+                    break;
+            }
             module.Write(output, new dnlib.DotNet.Writer.ModuleWriterOptions(module) {
                 Logger = DummyLogger.NoThrowInstance
             });
@@ -28,18 +40,9 @@ namespace DnrTrialRemover {
         }
 
         static void RemoveTrial(ModuleDefMD Module) {
-            List<MethodDef> trialMethods = new List<MethodDef>();
+            var trialMethods = GetTrialMethods(Module);
             int countTrialCall = 0;
-            foreach(var type in Module.Types) {
-                foreach(var method in type.Methods.Where(x => x.HasBody)) {
-                    var firstStr = method.Body.Instructions.FirstOrDefault(x => x.OpCode == OpCodes.Ldstr);
-                    if(firstStr != null) {
-                        if(firstStr.Operand.ToString() == "This assembly is protected by an unregistered version of Eziriz's \".NET Reactor\"! This assembly won't further work.")
-                            trialMethods.Add(method);
-                    }
-                }
-                    
-            }
+            
 
             Console.WriteLine($"Found {trialMethods.Count} trial declarations");
 
@@ -72,6 +75,21 @@ namespace DnrTrialRemover {
             }
             Console.WriteLine($"{countTrialCall} calls to trial check removed");
 
+        }
+
+        static List<MethodDef> GetTrialMethods(ModuleDefMD Module) {
+            List<MethodDef> trialMethods = new List<MethodDef>();
+            foreach(var type in Module.Types) {
+                foreach(var method in type.Methods.Where(x => x.HasBody)) {
+                    var firstStr = method.Body.Instructions.FirstOrDefault(x => x.OpCode == OpCodes.Ldstr);
+                    if(firstStr != null) {
+                        if(firstStr.Operand.ToString() == "This assembly is protected by an unregistered version of Eziriz's \".NET Reactor\"! This assembly won't further work.")
+                            trialMethods.Add(method);
+                    }
+                }
+
+            }
+            return trialMethods;
         }
     }
 }
